@@ -1,0 +1,12 @@
+{
+  "schema": "glaciereq.repo-capabilities.v1",
+  "repository": "GlacierEQ/vercel-deploy-preview-authority",
+  "capabilities": [
+    {
+      "id": "deploy-preview-authority",
+      "name": "Deploy Preview Authority",
+      "status": "SCAFFOLD",
+      "module": "src/deploy_preview_authority.py"
+    }
+  ]
+}

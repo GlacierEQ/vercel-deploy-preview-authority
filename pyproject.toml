@@ -1,0 +1,10 @@
+[project]
+name = "vercel-deploy-preview-authority"
+version = "0.0.1"
+description = "Scaffold: Deploy Preview Authority (independent Vercel lens)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

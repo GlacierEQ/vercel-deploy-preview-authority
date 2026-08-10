@@ -1,0 +1,11 @@
+{
+  "schema": "glaciereq.promotion-authority-grant.v1",
+  "repository": "GlacierEQ/vercel-deploy-preview-authority",
+  "source_sha": "baab39046c48d37281e6bcf1073df6d6a69bfd4b5ec67908888ee9dba5ae631d",
+  "proof_receipt_digest": "74b1f5536affd87a67bca3be9cfc802ead857a065921d188069cb7f7decf3d95",
+  "not_after": 1788948702.9699461,
+  "mac": "37c9b7e8c417398d827498d16bb801bbcd0e91284f40cca6fb95a0cf55697b9f",
+  "issuer": "local_operator_promotion_authority",
+  "verified": true,
+  "secret_ref": "src/promotion_authority.py::LOCAL_OPERATOR_SECRET"
+}
