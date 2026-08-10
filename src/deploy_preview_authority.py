@@ -1,22 +1,16 @@
-"""Deploy Preview Authority — SCAFFOLD STUB.
+"""Deploy Preview Authority — independent reference implementation.
 
-Company lens: Vercel (independent; no affiliation).
-Bottleneck: Durable workflows, safe code execution, least-privilege tool access, and full-stack observability.
-
-IMPLEMENTATION: see DEV_UP_INSTRUCTIONS.md
+Models environment-isolated deployment promotion with explicit grants, expiry,
+revocation, source-deployment binding, and a hard preview-to-production fence.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+import math
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
-
-def _digest(obj: object) -> str:
-    payload = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class Decision(str, Enum):
@@ -24,89 +18,134 @@ class Decision(str, Enum):
     REFUSE = "REFUSE"
 
 
-@dataclass(frozen=True)
-class DeployPreviewAuthorityRequest:
-    """Input envelope — expand fields as the mechanism solidifies."""
+class Environment(str, Enum):
+    PREVIEW = "preview"
+    STAGING = "staging"
+    PRODUCTION = "production"
 
+
+def _digest(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class PromotionGrant:
+    grant_id: str
+    project_id: str
     subject_id: str
-    payload: dict[str, Any] = field(default_factory=dict)
-    budget: float = 1.0
-    # Authority / freshness placeholders for the filling AI:
-    grant_id: str | None = None
-    not_after: float | None = None
+    allowed_transitions: tuple[str, ...]
+    issued_at: float
+    not_after: float
+    source_deployment_id: str | None = None
+    revoked: bool = False
 
 
 @dataclass(frozen=True)
-class DeployPreviewAuthorityReceipt:
+class DeploymentPromotionRequest:
+    project_id: str
+    deployment_id: str
+    source_environment: Environment
+    target_environment: Environment
+    subject_id: str
+    now: float
+
+
+@dataclass(frozen=True)
+class DeploymentAuthorityReceipt:
     decision: Decision
     reasons: tuple[str, ...]
+    grant_id: str
+    transition: str
+    deployment_id: str
     digest: str
-    metrics: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "decision": self.decision.value,
             "reasons": list(self.reasons),
+            "grant_id": self.grant_id,
+            "transition": self.transition,
+            "deployment_id": self.deployment_id,
             "digest": self.digest,
-            "metrics": self.metrics,
         }
 
 
 class DeployPreviewAuthority:
-    """Central mechanism stub.
+    """Fail-closed authority for preview/staging/production transitions."""
 
-    Contract the filling AI must preserve:
-    - `evaluate(req)` returns a DeployPreviewAuthorityReceipt
-    - invalid/empty subject_id → REFUSE
-    - budget <= 0 → REFUSE
-    - otherwise ALLOW with a content digest over the request
-    Replace body with the real algorithm; keep fail-closed edges.
-    """
+    @staticmethod
+    def transition_key(source: Environment, target: Environment) -> str:
+        return f"{source.value}->{target.value}"
 
-    # Named constants (no magic numbers)
-    MIN_BUDGET: float = 0.0
-    MAX_REASON_LEN: int = 240
-
-    def evaluate(self, req: DeployPreviewAuthorityRequest) -> DeployPreviewAuthorityReceipt:
+    def evaluate(self, grant: PromotionGrant, req: DeploymentPromotionRequest) -> DeploymentAuthorityReceipt:
         reasons: list[str] = []
-        if not req.subject_id or not str(req.subject_id).strip():
-            reasons.append("subject_id_missing")
-        if req.budget <= self.MIN_BUDGET:
-            reasons.append("budget_non_positive")
-        # Scaffold: treat missing grant as soft signal only; real impl may hard-refuse.
-        if reasons:
-            body = {
-                "subject_id": req.subject_id,
-                "payload": req.payload,
-                "budget": req.budget,
-                "decision": Decision.REFUSE.value,
-                "reasons": reasons,
-            }
-            return DeployPreviewAuthorityReceipt(
-                decision=Decision.REFUSE,
-                reasons=tuple(reasons),
-                digest=_digest(body),
-                metrics={"scaffold": True, "reason_count": len(reasons)},
-            )
+        if not math.isfinite(req.now):
+            raise ValueError("non_finite_now")
+        if not all(math.isfinite(v) for v in (grant.issued_at, grant.not_after)):
+            reasons.append("grant_time_invalid")
+        if not grant.grant_id.strip() or not grant.subject_id.strip():
+            reasons.append("grant_identity_missing")
+        if grant.not_after <= grant.issued_at:
+            reasons.append("grant_lifetime_invalid")
+        if req.now < grant.issued_at:
+            reasons.append("grant_not_active")
+        if req.now > grant.not_after:
+            reasons.append("grant_expired")
+        if grant.revoked:
+            reasons.append("grant_revoked")
+        if req.project_id != grant.project_id:
+            reasons.append("project_scope_mismatch")
+        if req.subject_id != grant.subject_id:
+            reasons.append("subject_scope_mismatch")
+        if grant.source_deployment_id and req.deployment_id != grant.source_deployment_id:
+            reasons.append("source_deployment_mismatch")
+        if req.source_environment is req.target_environment:
+            reasons.append("same_environment_transition")
+
+        transition = self.transition_key(req.source_environment, req.target_environment)
+        if transition not in grant.allowed_transitions:
+            reasons.append("transition_not_authorized")
+
+        # Production promotion must be staged. A preview grant can never jump the
+        # isolation boundary directly into production, even if a malformed grant
+        # claims that transition.
+        if req.source_environment is Environment.PREVIEW and req.target_environment is Environment.PRODUCTION:
+            reasons.append("preview_to_production_forbidden")
 
         body = {
+            "grant_id": grant.grant_id,
+            "project_id": req.project_id,
+            "deployment_id": req.deployment_id,
             "subject_id": req.subject_id,
-            "payload": req.payload,
-            "budget": req.budget,
-            "grant_id": req.grant_id,
-            "decision": Decision.ALLOW.value,
+            "transition": transition,
+            "issued_at": grant.issued_at,
+            "not_after": grant.not_after,
+            "revoked": grant.revoked,
+            "decision": Decision.REFUSE.value if reasons else Decision.ALLOW.value,
+            "reasons": reasons,
         }
-        return DeployPreviewAuthorityReceipt(
-            decision=Decision.ALLOW,
-            reasons=("scaffold_allow",),
+        return DeploymentAuthorityReceipt(
+            decision=Decision.REFUSE if reasons else Decision.ALLOW,
+            reasons=tuple(reasons or ["transition_authorized"]),
+            grant_id=grant.grant_id,
+            transition=transition,
+            deployment_id=req.deployment_id,
             digest=_digest(body),
-            metrics={
-                "scaffold": True,
-                "payload_keys": sorted(req.payload.keys()),
-                "budget": req.budget,
-            },
+        )
+
+    @staticmethod
+    def revoke(grant: PromotionGrant) -> PromotionGrant:
+        return PromotionGrant(
+            grant_id=grant.grant_id,
+            project_id=grant.project_id,
+            subject_id=grant.subject_id,
+            allowed_transitions=grant.allowed_transitions,
+            issued_at=grant.issued_at,
+            not_after=grant.not_after,
+            source_deployment_id=grant.source_deployment_id,
+            revoked=True,
         )
 
 
-# Friendly alias for operate scripts
 Mechanism = DeployPreviewAuthority
