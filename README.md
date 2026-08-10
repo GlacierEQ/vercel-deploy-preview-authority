@@ -2,50 +2,28 @@
 
 Independent GlacierEQ portfolio exhibit aligned to **Vercel** operating themes.
 
-> **Not affiliated.** This repository is not affiliated with, endorsed by, employed by, or deployed at Vercel.
-> No proprietary access, production deployment, customer impact, or company partnership is claimed.
+> **Not affiliated.** This repository is not affiliated with, endorsed by, employed by, or deployed at Vercel. No proprietary access, production deployment, customer impact, or company partnership is claimed.
 
-## Bottleneck (GlacierEQ hypothesis)
+## Implemented mechanism
 
-Durable workflows, safe code execution, least-privilege tool access, and full-stack observability.
+`DeployPreviewAuthority` models promotion as a scoped, expiring, revocable capability bound to a project, subject, source deployment, and explicit environment transition.
 
-**Brick wall:** Turning fast prototypes into recoverable, secure production agents without provider lock-in or hidden runtime state.
+Hard boundaries:
 
-**Observed public pressure (snapshot hypothesis):** Developers need a complete production stack for AI applications: models, workflows, sandboxes, auth, observability, and deployment.
+- preview → production is always refused; production must be staged;
+- grants expire and can be revoked immediately;
+- project, subject, and deployment identity must match;
+- transitions must be explicitly listed;
+- same-environment promotion is refused;
+- receipts bind decision, transition, deployment, authority, and reasons.
 
-## Innovation mechanism
+## Proof surface
 
-**Deploy Preview Authority** — Mint preview deploy grants with env scopes and auto-expire; revoke on policy break.
+- `src/deploy_preview_authority.py` — domain mechanism
+- `tests/test_deploy_preview_authority.py` — isolation, staging, scope, expiry, revocation tests
+- `scripts/operate.py` — direct preview → staging execution
+- `.github/workflows/tests.yml` — pytest + operate CI
 
-## Target roles
+## Current boundary
 
-- Applied AI Systems Architect
-- Forward-Deployed Engineer
-- AI Infrastructure / Governance Engineer
-
-## Application move
-
-Deploy the Helix intelligence UI as a concrete Vercel production-agent case study.
-
-## Current scaffold state
-
-This leaf is a **scaffold**: contracts, tests, and a stub mechanism exist so another engineer/AI can fill production-grade code without inventing company affiliation.
-
-| Surface | Path |
-|---------|------|
-| Mechanism stub | `src/deploy_preview_authority.py` |
-| Operate entry | `scripts/operate.py` |
-| Contract tests | `tests/` |
-| Target contract | `machine/target-contract.json` |
-| **AI fill-in brief** | **`DEV_UP_INSTRUCTIONS.md`** |
-| Issue contract | `ISSUE_CONTRACT.md` |
-
-## Non-claims
-
-- No Vercel employment, endorsement, proprietary data, or production use
-- No customer, revenue, latency, or scale claims without separate receipts
-- Scaffold tests define **intended behavior**, not verified production excellence
-
-## Next gate
-
-Finish preview deployment and record commit-to-deployment parity.
+This is a deterministic reference authority model using synthetic deployment identities. It does not call Vercel APIs or control a real project. A live disposable-project integration is the next evidence gate.
